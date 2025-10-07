@@ -6,6 +6,8 @@ using UnityEditorInternal;
 
 public class WorldSpawnerTool : EditorWindow
 {
+    // Internal painter instance (not used in current version, but can be extended for painting mode)
+    private SpawnPointPainter painter = new SpawnPointPainter();
     private GameObject prefabToSpawn;
     private List<Transform> spawnPoints = new List<Transform>();
     private List<GameObject> allSpawnedObjects = new List<GameObject>(); // Track all spawned objects
@@ -47,125 +49,168 @@ public class WorldSpawnerTool : EditorWindow
     private void OnEnable()
     {
         SceneView.duringSceneGui += OnSceneGUI;
+        Undo.undoRedoPerformed += OnUndoRedo;
+        Selection.selectionChanged += OnSelectionChanged;
+        painter.OnPointCreated += OnPainterCreatedPoint;
     }
 
     private void OnDisable()
     {
         SceneView.duringSceneGui -= OnSceneGUI;
+        Undo.undoRedoPerformed -= OnUndoRedo;
+        Selection.selectionChanged -= OnSelectionChanged;
+        painter.OnPointCreated -= OnPainterCreatedPoint;
+    }
+
+    private void OnUndoRedo()
+    {
+        SceneView.RepaintAll(); // Repaint when scene changes due to undo/redo
+    }
+    private void OnSelectionChanged()
+    {
+        SceneView.RepaintAll(); // Repaint when selection changes
+    }
+
+    // Add function to handle point created by painter
+    private void OnPainterCreatedPoint(Transform newPoint)
+    {
+        // Add to list if not already present
+        if (!spawnPoints.Contains(newPoint))
+        {
+            spawnPoints.Add(newPoint);
+            Repaint(); // Refresh the window to show new point
+        }
     }
 
     private void OnSceneGUI(SceneView sceneView)
     {
-        if (!showPreview || spawnPoints.Count == 0)
-            return;
-
-        foreach (Transform spawnPoint in spawnPoints)
+        Event e = Event.current;
+        // Press 'P' to toggle paint mode
+        if (e.type == EventType.KeyDown && e.keyCode == KeyCode.P)
         {
-            if (spawnPoint == null)
-                continue;
+            painter.IsActive = !painter.IsActive;
+            Repaint(); 
+            sceneView.Repaint(); 
 
-            Vector3 position = spawnPoint.position;
-            Quaternion rotation = spawnPoint.rotation;
+            // Show notification
+            if (painter.IsActive)
+                sceneView.ShowNotification(new GUIContent("🎨 Paint Mode ON"), 1f);
+            else
+                sceneView.ShowNotification(new GUIContent("Paint Mode OFF"), 1f);
 
-            // Calculate preview rotation (only for align to surface, NOT random)
-            if (alignToSurface)
-            {
-                RaycastHit hit;
-
-                if (Physics.Raycast(position + Vector3.up * 10f, Vector3.down, out hit, raycastDistance + 10f, surfaceLayerMask))
-                {
-                    rotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
-
-                    // Draw surface normal (cyan)
-                    Handles.color = Color.cyan;
-                    Handles.DrawLine(hit.point, hit.point + hit.normal * 1.5f);
-
-                    // Draw successful raycast (green)
-                    Handles.color = new Color(0f, 1f, 0f, 0.5f);
-                    Handles.DrawLine(position + Vector3.up * 10f, hit.point);
-
-                    // Draw hit point
-                    Handles.color = Color.green;
-                    Handles.SphereHandleCap(0, hit.point, Quaternion.identity, 0.2f, EventType.Repaint);
-                }
-                else
-                {
-                    // Draw failed raycast (red)
-                    Handles.color = new Color(1f, 0f, 0f, 0.5f);
-                    Handles.DrawLine(position + Vector3.up * 10f, position + Vector3.down * raycastDistance);
-                }
-            }
-
-            // Note: Random rotation is NOT previewed because it's calculated at spawn time
-
-            // Draw sphere at spawn point with preview color
-            Handles.color = previewColor;
-            Handles.SphereHandleCap(0, position, Quaternion.identity, previewSphereSize, EventType.Repaint);
-
-            // Draw orientation arrows
-            if (showDirections)
-            {
-                float size = previewArrowSize;
-
-                // Forward (Blue) - Z axis
-                Handles.color = new Color(0f, 0.5f, 1f, 0.9f);
-                Vector3 forward = rotation * Vector3.forward * size;
-                Handles.ArrowHandleCap(0, position, Quaternion.LookRotation(forward), size, EventType.Repaint);
-
-                // Right (Red) - X axis
-                Handles.color = new Color(1f, 0f, 0f, 0.7f);
-                Vector3 right = rotation * Vector3.right * size * 0.6f;
-                Handles.DrawLine(position, position + right);
-                Handles.ConeHandleCap(0, position + right, Quaternion.LookRotation(right), size * 0.2f, EventType.Repaint);
-
-                // Up (Green) - Y axis
-                Handles.color = new Color(0f, 1f, 0f, 0.7f);
-                Vector3 up = rotation * Vector3.up * size * 0.6f;
-                Handles.DrawLine(position, position + up);
-                Handles.ConeHandleCap(0, position + up, Quaternion.LookRotation(up), size * 0.2f, EventType.Repaint);
-            }
-
-            // Draw label
-            if (showNames)
-            {
-                GUIStyle style = new GUIStyle(EditorStyles.whiteBoldLabel);
-                style.normal.textColor = Color.white;
-                style.fontSize = 11;
-
-                if (showNameBackground)
-                {
-                    // Create background texture
-                    style.normal.background = MakeBackgroundTexture(2, 2, new Color(0f, 0f, 0f, 0.7f));
-                    style.padding = new RectOffset(4, 4, 2, 2);
-                }
-
-                Handles.Label(position + Vector3.up * 0.5f, spawnPoint.name, style);
-            }
+            e.Use(); // Consume event to prevent further processing
         }
 
-        // Only repaint if we're not in repaint event
-        if (Event.current.type != EventType.Repaint)
-        {
-            sceneView.Repaint();
+            painter.OnSceneGUI(sceneView);
+
+            // If painter is active, skip preview
+            if (painter.IsActive)
+                return;
+
+            if (!showPreview || spawnPoints.Count == 0)
+                return;
+
+            foreach (Transform spawnPoint in spawnPoints)
+            {
+                if (spawnPoint == null)
+                    continue;
+
+                Vector3 position = spawnPoint.position;
+                Quaternion rotation = spawnPoint.rotation;
+
+                // Calculate preview rotation (only for align to surface, NOT random)
+                if (alignToSurface)
+                {
+                    RaycastHit hit;
+
+                    if (Physics.Raycast(position + Vector3.up * 10f, Vector3.down, out hit, raycastDistance + 10f, surfaceLayerMask))
+                    {
+                        rotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+
+                        // Draw surface normal (cyan)
+                        Handles.color = Color.cyan;
+                        Handles.DrawLine(hit.point, hit.point + hit.normal * 1.5f);
+
+                        // Draw successful raycast (green)
+                        Handles.color = new Color(0f, 1f, 0f, 0.5f);
+                        Handles.DrawLine(position + Vector3.up * 10f, hit.point);
+
+                        // Draw hit point
+                        Handles.color = Color.green;
+                        Handles.SphereHandleCap(0, hit.point, Quaternion.identity, 0.2f, EventType.Repaint);
+                    }
+                    else
+                    {
+                        // Draw failed raycast (red)
+                        Handles.color = new Color(1f, 0f, 0f, 0.5f);
+                        Handles.DrawLine(position + Vector3.up * 10f, position + Vector3.down * raycastDistance);
+                    }
+                }
+
+                // Note: Random rotation is NOT previewed because it's calculated at spawn time
+
+                // Draw sphere at spawn point with preview color
+                Handles.color = previewColor;
+                Handles.SphereHandleCap(0, position, Quaternion.identity, previewSphereSize, EventType.Repaint);
+
+                // Draw orientation arrows
+                if (showDirections)
+                {
+                    float size = previewArrowSize;
+
+                    // Forward (Blue) - Z axis
+                    Handles.color = new Color(0f, 0.5f, 1f, 0.9f);
+                    Vector3 forward = rotation * Vector3.forward * size;
+                    Handles.ArrowHandleCap(0, position, Quaternion.LookRotation(forward), size, EventType.Repaint);
+
+                    // Right (Red) - X axis
+                    Handles.color = new Color(1f, 0f, 0f, 0.7f);
+                    Vector3 right = rotation * Vector3.right * size * 0.6f;
+                    Handles.DrawLine(position, position + right);
+                    Handles.ConeHandleCap(0, position + right, Quaternion.LookRotation(right), size * 0.2f, EventType.Repaint);
+
+                    // Up (Green) - Y axis
+                    Handles.color = new Color(0f, 1f, 0f, 0.7f);
+                    Vector3 up = rotation * Vector3.up * size * 0.6f;
+                    Handles.DrawLine(position, position + up);
+                    Handles.ConeHandleCap(0, position + up, Quaternion.LookRotation(up), size * 0.2f, EventType.Repaint);
+                }
+
+                // Draw label
+                if (showNames)
+                {
+                    GUIStyle style = new GUIStyle(EditorStyles.whiteBoldLabel);
+                    style.normal.textColor = Color.white;
+                    style.fontSize = 11;
+
+                    if (showNameBackground)
+                    {
+                        // Create background texture
+                        style.normal.background = MakeBackgroundTexture(2, 2, new Color(0f, 0f, 0f, 0.7f));
+                        style.padding = new RectOffset(4, 4, 2, 2);
+                    }
+
+                    Handles.Label(position + Vector3.up * 0.5f, spawnPoint.name, style);
+                }
+            }
+
+            // Only repaint if we're not in repaint event
+            if (Event.current.type != EventType.Repaint)
+            {
+                sceneView.Repaint();
+            }
         }
-    }
 
     private void OnGUI()
     {
         scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
-
-        EditorGUILayout.Space();
-
         // Prefab Selection
         EditorGUILayout.LabelField("Prefab to Spawn:", EditorStyles.boldLabel, GUILayout.Height(20));
         prefabToSpawn = (GameObject)EditorGUILayout.ObjectField(prefabToSpawn, typeof(GameObject), false, GUILayout.Height(30));
-
-        EditorGUILayout.Space();
+        painter.DrawSettingsGUI();
 
         // Spawn Points Section with Foldout
-        showSpawnPointsList = EditorGUILayout.Foldout(showSpawnPointsList, $"Spawn Points ({spawnPoints.Count}):", true, EditorStyles.foldoutHeader);
-
-        EditorGUILayout.Space();
+        // showSpawnPointsList = EditorGUILayout.Foldout(showSpawnPointsList, $"Points ({spawnPoints.Count}):", true, EditorStyles.foldoutHeader);
 
         if (showSpawnPointsList)
         {
@@ -188,6 +233,7 @@ public class WorldSpawnerTool : EditorWindow
                 if (EditorUtility.DisplayDialog("Clear All", "Remove all spawn points?", "Yes", "No"))
                 {
                     spawnPoints.Clear();
+                    painter.Reset(); // Also reset painter points
                 }
             }
             EditorGUILayout.EndHorizontal();
@@ -206,9 +252,9 @@ public class WorldSpawnerTool : EditorWindow
                 for (int i = 0; i < spawnPoints.Count; i++)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    spawnPoints[i] = (Transform)EditorGUILayout.ObjectField($"Point {i + 1}", spawnPoints[i], typeof(Transform), true);
+                    spawnPoints[i] = (Transform)EditorGUILayout.ObjectField($"     Point {i + 1}", spawnPoints[i], typeof(Transform), true);
 
-                    if (GUILayout.Button("X", GUILayout.Width(25)))
+                    if (GUILayout.Button("X", GUILayout.Width(30)))
                     {
                         removeIndex = i;
                     }
@@ -231,19 +277,21 @@ public class WorldSpawnerTool : EditorWindow
         // Spawn options with indent
         EditorGUI.indentLevel++;
 
-        objectNamePrefix = EditorGUILayout.TextField("Object Name Prefix", objectNamePrefix);
+        EditorGUILayout.HelpBox("If left empty, spawn objects will use the prefab name as prefix.", MessageType.Info);
+        objectNamePrefix = EditorGUILayout.TextField("Spawn Name Prefix", objectNamePrefix);
+
 
         alignToSurface = EditorGUILayout.Toggle("Align to Surface", alignToSurface);
         if (alignToSurface)
         {
             EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox("Select layers to use as surface. Green line = hit, Red line = no hit.", MessageType.Info);
             surfaceLayerMask = EditorGUILayout.MaskField("Surface Layers",
                 InternalEditorUtility.LayerMaskToConcatenatedLayersMask(surfaceLayerMask),
                 InternalEditorUtility.layers);
             surfaceLayerMask = InternalEditorUtility.ConcatenatedLayersMaskToLayerMask(surfaceLayerMask);
 
             raycastDistance = EditorGUILayout.Slider("Raycast Distance", raycastDistance, 5f, 100f);
-            EditorGUILayout.HelpBox("Select layers to use as surface. Green line = hit, Red line = no hit.", MessageType.Info);
             EditorGUI.indentLevel--;
         }
 
@@ -251,17 +299,17 @@ public class WorldSpawnerTool : EditorWindow
         if (useRandomRotation)
         {
             EditorGUI.indentLevel++;
+            if (alignToSurface)
+            {
+                EditorGUILayout.HelpBox("Random rotation will be applied AFTER surface alignment.", MessageType.Info);
+            }
             EditorGUILayout.BeginHorizontal();
             randomRotationX = EditorGUILayout.ToggleLeft("X Axis", randomRotationX, GUILayout.Width(90));
             randomRotationY = EditorGUILayout.ToggleLeft("Y Axis", randomRotationY, GUILayout.Width(90));
             randomRotationZ = EditorGUILayout.ToggleLeft("Z Axis", randomRotationZ, GUILayout.Width(90));
             EditorGUILayout.EndHorizontal();
-
-            if (alignToSurface)
-            {
-                EditorGUILayout.HelpBox("Random rotation will be applied AFTER surface alignment.", MessageType.Info);
-            }
             EditorGUI.indentLevel--;
+
         }
 
         useRandomScale = EditorGUILayout.Toggle("Random Scale", useRandomScale);
@@ -269,25 +317,19 @@ public class WorldSpawnerTool : EditorWindow
         {
             EditorGUILayout.BeginHorizontal();
 
-            // Giữ nguyên label chính, có thể dùng indent nếu muốn
             EditorGUILayout.LabelField("     Scale Range:", GUILayout.Width(EditorGUIUtility.labelWidth - 4));
 
-            // Reset indent tạm thời để chữ Min/Max không bị đẩy vào
             int prevIndent = EditorGUI.indentLevel;
             EditorGUI.indentLevel = 0;
 
-            // Nhóm Min
             EditorGUILayout.LabelField("Min: ", GUILayout.Width(25));
             scaleRange.x = EditorGUILayout.FloatField(scaleRange.x, GUILayout.Width(50));
 
-            // Giữa Min và Max có khoảng trống
             GUILayout.Label(" - ", GUILayout.Width(15));
 
-            // Nhóm Max
-            EditorGUILayout.LabelField("Max: ", GUILayout.Width(25));
+            EditorGUILayout.LabelField("Max: ", GUILayout.Width(28));
             scaleRange.y = EditorGUILayout.FloatField(scaleRange.y, GUILayout.Width(50));
 
-            // Trả indent lại
             EditorGUI.indentLevel = prevIndent;
 
             EditorGUILayout.EndHorizontal();
@@ -297,7 +339,7 @@ public class WorldSpawnerTool : EditorWindow
 
         parentToSpawnPoint = EditorGUILayout.Toggle("Parent to Spawn Point", parentToSpawnPoint);
 
-        EditorGUI.indentLevel--; // Reset indent after all spawn options
+        EditorGUI.indentLevel--;
 
         EditorGUILayout.Space();
 
@@ -398,8 +440,12 @@ public class WorldSpawnerTool : EditorWindow
 
     private void SpawnObjects()
     {
+        // Disable painter if active
+        painter.IsActive = false;
+
         // Determine final prefix
         string finalPrefix = string.IsNullOrEmpty(objectNamePrefix)
+            // +1 to avoid start from 0        
             ? prefabToSpawn.name + "_"
             : objectNamePrefix;
 
@@ -420,7 +466,7 @@ public class WorldSpawnerTool : EditorWindow
         spawnPointIndices.Clear();
         for (int i = 0; i < spawnPoints.Count; i++)
         {
-            spawnPointIndices[spawnPoints[i]] = i;
+            spawnPointIndices[spawnPoints[i]] = i + 1;
         }
 
         // Group all spawns into single Undo operation
