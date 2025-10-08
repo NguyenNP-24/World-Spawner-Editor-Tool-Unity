@@ -1,12 +1,14 @@
 Unity Editor tool for intuitive world-building. Paint, erase, and snap objects directly onto surfaces with full control over placement, alignment, and random variation in rotation and scale.
 
-**✅ COMPATIBILITY **
+✅ **COMPATIBILITY** 
 
 > Unity Version: 2021.3 LTS or later
 > 
 > Render Pipeline: Built-in, URP, HDRP supported
 > 
 > Platform: Windows, macOS
+
+**⚙️ INSTALL** Download Zip, Extract, Import Tools folder into any Unity projects
 
 ### > **KEY FEATURES:**
 > 
