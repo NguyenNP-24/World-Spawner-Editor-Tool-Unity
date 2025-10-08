@@ -13,3 +13,5 @@ Spawn Point Manager – Add, select, or clear, rename spawn points with friendly
 Preview System – Visualize points, directions, and object names in real-time.
 
 Fast Workflow – Designed for large-scale procedural placement with precision and control.
+
+Detail process: https://www.youtube.com/watch?v=S4bB7Wi9Sxc&t=5s
