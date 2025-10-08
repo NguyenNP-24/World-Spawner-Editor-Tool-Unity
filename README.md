@@ -1,6 +1,6 @@
 Unity Editor tool for intuitive world-building. Paint, erase, and snap objects directly onto surfaces with full control over placement, alignment, and random variation in rotation and scale.
 
-**COMPATIBILITY **
+**✅ COMPATIBILITY **
 
 > Unity Version: 2021.3 LTS or later
 > 
