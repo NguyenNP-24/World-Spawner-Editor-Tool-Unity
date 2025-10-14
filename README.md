@@ -95,3 +95,5 @@ Unity Editor tool for intuitive world-building. Paint, erase, and snap objects d
 > 
 > **SCENE INFO:** Displays total painted points and total spawned objects at the bottom bar.
 
+Detail process: https://www.youtube.com/watch?v=S4bB7Wi9Sxc
+
